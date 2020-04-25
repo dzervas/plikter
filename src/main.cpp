@@ -1,17 +1,17 @@
-#include "Arduino.h"
+#include <Arduino.h>
+#include <bluefruit.h>
+#include <Keypad.h>
+#include <Wire.h>
+#include <SSD1306Ascii.h>
+#include <SSD1306AsciiWire.h>
+
+#include "bitmaps.h"
 
 #define DEVICE_NAME "Plikter"
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define SCREEN_I2C_ADDRESS 0x3C
-
-#define SCREEN_COLUMNS 10
-#define SCREEN_ROWS 4
-
-// SSD1306Ascii options
-//#define INCLUDE_SCROLLING 0
-//#define OPTIMIZE_I2C 1
 
 // Keyboard options
 #define KBD_ROWS 4
@@ -25,15 +25,9 @@ const char KBD_MAP[KBD_ROWS][KBD_COLUMNS] = {
 byte KBD_INPUT_ROWS[KBD_COLUMNS] = { A0, A1, A2, A3, };
 byte KBD_INPUT_COLUMNS[KBD_ROWS] = { 16, 15, 7, 11, };
 
-#include <bluefruit.h>
-#include <Keypad.h>
-#include <Wire.h>
-#include <SSD1306Ascii.h>
-#include <SSD1306AsciiWire.h>
-
-BLEDis bledis;
-BLEHidAdafruit blehid;
-SSD1306AsciiWire display;
+BLEDis bleDis;
+BLEHidAdafruit bleHid;
+SSD1306AsciiWireBitmap display;
 Keypad keyboard(makeKeymap(KBD_MAP), KBD_INPUT_ROWS, KBD_INPUT_COLUMNS, sizeof(KBD_INPUT_ROWS), sizeof(KBD_INPUT_COLUMNS));
 
 byte curRow = 0;
@@ -42,7 +36,8 @@ byte curCol = 0;
 void handleBtEvent(ble_evt_t *event) {
     switch (event->header.evt_id) {
         case BLE_GAP_EVT_CONNECTED:
-            digitalWrite(LED_CONN, LOW);
+            display.setCursor(120, 0);
+            display.printBitmapPGM(BITMAP_BLUETOOTH[3]);
             break;
         default: break;
     }
@@ -53,7 +48,7 @@ void handleBtInput(KeypadEvent key, KeyState state) {
 
     // TODO: Use keyboardReport to set multiple keys & modifiers
     // https://github.com/adafruit/Adafruit_nRF52_Arduino/blob/master/libraries/Bluefruit52Lib/src/services/BLEHidAdafruit.cpp#L115
-    blehid.keyPress(key);
+    bleHid.keyPress(key);
 }
 
 void handleBtLed(uint16_t _conn_handle, uint8_t led_bitmap) {
@@ -68,11 +63,12 @@ void setupBluetooth() {
     Bluefruit.setTxPower(-40);
     Bluefruit.setName(DEVICE_NAME);
     Bluefruit.setEventCallback(handleBtEvent);
+    Bluefruit.autoConnLed(false);
 
     // Configure and Start Device Information Service
-    bledis.setManufacturer("DZervas");
-    bledis.setModel("Plikter v0.1.0");
-    bledis.begin();
+    bleDis.setManufacturer("DZervas");
+    bleDis.setModel("Plikter v0.1.0");
+    bleDis.begin();
 
     /* Start BLE HID
      * Note: Apple requires BLE device must have min connection interval >= 20m
@@ -81,10 +77,10 @@ void setupBluetooth() {
      * up to 11.25 ms. Therefore BLEHidAdafruit::begin() will try to set the min and max
      * connection interval to 11.25  ms and 15 ms respectively for best performance.
      */
-    blehid.begin();
+    bleHid.begin();
 
     // Set callback for set LED from central
-    blehid.setKeyboardLedCallback(handleBtLed);
+    bleHid.setKeyboardLedCallback(handleBtLed);
 
     /* Set connection interval (min, max) to your preferred value.
      * Note: It is already set by BLEHidAdafruit::begin() to 11.25ms - 15ms
@@ -98,7 +94,7 @@ void setupBluetooth() {
     Bluefruit.Advertising.addAppearance(BLE_APPEARANCE_HID_KEYBOARD);
 
     // Include BLE HID service
-    Bluefruit.Advertising.addService(blehid);
+    Bluefruit.Advertising.addService(bleHid);
 
     // There is enough room for the dev name in the advertising packet
     Bluefruit.Advertising.addName();
@@ -130,9 +126,21 @@ void setupScreen() {
 
     display.begin(&Adafruit128x64, SCREEN_I2C_ADDRESS);
 
-    display.setFont(Adafruit5x7);
-    display.set2X();
+    display.setFont(System5x7);
     display.clear();
+    display.print("Ready!");
+
+//    display.setCursor(0, 2);
+//    for (byte i=0; i < 4; i++)
+//        display.printBitmapPGM(BITMAP_BLUETOOTH[i]);
+//
+//    display.setCursor(0, 3);
+//    for (byte i=0; i < 7; i++)
+//        display.printBitmapPGM(BITMAP_BATTERY[i]);
+//
+//    display.setCursor(0, 4);
+//    for (byte i=2; i < 5; i++)
+//        display.printBitmapPGM(BITMAP_LOCK_LEDS[i]);
 }
 
 void setup() {
@@ -152,9 +160,7 @@ void loop() {
     keyboard.getKeys();
 
     if (keyboard.getState() == RELEASED)
-        blehid.keyRelease();
+        bleHid.keyRelease();
 
     delay(10);
-//    display.clearField(0, 0, 3);
-//    display.println(buf);
 }
