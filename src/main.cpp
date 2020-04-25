@@ -1,5 +1,7 @@
 #include "Arduino.h"
 
+#define DEVICE_NAME "Plikter"
+
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define SCREEN_I2C_ADDRESS 0x3C
@@ -37,7 +39,7 @@ Keypad keyboard(makeKeymap(KBD_MAP), KBD_INPUT_ROWS, KBD_INPUT_COLUMNS, sizeof(K
 byte curRow = 0;
 byte curCol = 0;
 
-void handleBluetooth(ble_evt_t *event) {
+void handleBtEvent(ble_evt_t *event) {
     switch (event->header.evt_id) {
         case BLE_GAP_EVT_CONNECTED:
             digitalWrite(LED_CONN, LOW);
@@ -46,37 +48,26 @@ void handleBluetooth(ble_evt_t *event) {
     }
 }
 
-void handleInput(KeypadEvent key, KeyState state) {
+void handleBtInput(KeypadEvent key, KeyState state) {
     if (state != PRESSED) return;
 
+    // TODO: Use keyboardReport to set multiple keys & modifiers
+    // https://github.com/adafruit/Adafruit_nRF52_Arduino/blob/master/libraries/Bluefruit52Lib/src/services/BLEHidAdafruit.cpp#L115
     blehid.keyPress(key);
-
-    /*
-    if (curCol >= SCREEN_COLUMNS) {
-       curCol = 0;
-       curRow++;
-       if (curRow < SCREEN_ROWS) {
-           display.setCursor(0, curRow*2);
-       } else {
-           curRow = 0;
-           display.setCursor(0, 0);
-       }
-    }
-
-    curCol++;
-    display.print(key);
-    */
 }
 
-void handleLedInput(uint16_t _conn_handle, uint8_t led_bitmap) {
+void handleBtLed(uint16_t _conn_handle, uint8_t led_bitmap) {
+    // TODO: Handle LED events
+    // KEYBOARD_LED_KANA, KEYBOARD_LED_COMPOSE, KEYBOARD_LED_SCROLLLOCK,
+    // KEYBOARD_LED_CAPSLOCK, KEYBOARD_LED_NUMLOCK
     digitalWrite(LED_BUILTIN, led_bitmap ? HIGH : LOW);
 }
 
 void setupBluetooth() {
     Bluefruit.begin();
-    Bluefruit.setTxPower(-20);
-    Bluefruit.setName("Plikter");
-    Bluefruit.setEventCallback(handleBluetooth);
+    Bluefruit.setTxPower(-40);
+    Bluefruit.setName(DEVICE_NAME);
+    Bluefruit.setEventCallback(handleBtEvent);
 
     // Configure and Start Device Information Service
     bledis.setManufacturer("DZervas");
@@ -93,7 +84,7 @@ void setupBluetooth() {
     blehid.begin();
 
     // Set callback for set LED from central
-    blehid.setKeyboardLedCallback(handleLedInput);
+    blehid.setKeyboardLedCallback(handleBtLed);
 
     /* Set connection interval (min, max) to your preferred value.
      * Note: It is already set by BLEHidAdafruit::begin() to 11.25ms - 15ms
@@ -129,7 +120,7 @@ void setupBluetooth() {
 
 void setupKeyboard() {
     keyboard.begin(makeKeymap(KBD_MAP));
-    keyboard.addStatedEventListener(handleInput);
+    keyboard.addStatedEventListener(handleBtInput);
     keyboard.setHoldTime(-1);
 }
 
