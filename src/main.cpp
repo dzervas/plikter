@@ -2,16 +2,22 @@
 #include <bluefruit.h>
 #include <Keypad.h>
 #include <Wire.h>
+
+#ifdef SCREEN_ENABLE
 #include <SSD1306Ascii.h>
 #include <SSD1306AsciiWire.h>
 
 #include "bitmaps.h"
+#endif
 
 #define DEVICE_NAME "Plikter"
 
+// #define SCREEN_ENABLE
+#ifdef SCREEN_ENABLE
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define SCREEN_I2C_ADDRESS 0x3C
+#endif
 
 // Keyboard options
 #define KBD_ROWS 4
@@ -27,7 +33,9 @@ byte KBD_INPUT_COLUMNS[KBD_ROWS] = { 16, 15, 7, 11, };
 
 BLEDis bleDis;
 BLEHidAdafruit bleHid;
+#ifdef SCREEN_ENABLE
 SSD1306AsciiWireBitmap display;
+#endif
 Keypad keyboard(makeKeymap(KBD_MAP), KBD_INPUT_ROWS, KBD_INPUT_COLUMNS, sizeof(KBD_INPUT_ROWS), sizeof(KBD_INPUT_COLUMNS));
 
 byte curRow = 0;
@@ -36,8 +44,10 @@ byte curCol = 0;
 void handleBtEvent(ble_evt_t *event) {
     switch (event->header.evt_id) {
         case BLE_GAP_EVT_CONNECTED:
+#ifdef SCREEN_ENABLE
             display.setCursor(120, 0);
             display.printBitmapPGM(BITMAP_BLUETOOTH[3]);
+#endif
             break;
         default: break;
     }
@@ -63,7 +73,9 @@ void setupBluetooth() {
     Bluefruit.setTxPower(-40);
     Bluefruit.setName(DEVICE_NAME);
     Bluefruit.setEventCallback(handleBtEvent);
+#ifndef SCREEN_ENABLE
     Bluefruit.autoConnLed(false);
+#endif
 
     // Configure and Start Device Information Service
     bleDis.setManufacturer("DZervas");
@@ -120,6 +132,7 @@ void setupKeyboard() {
     keyboard.setHoldTime(-1);
 }
 
+#ifdef SCREEN_ENABLE
 void setupScreen() {
     Wire.begin();
     Wire.setClock(1000000L);
@@ -142,6 +155,7 @@ void setupScreen() {
 //    for (byte i=2; i < 5; i++)
 //        display.printBitmapPGM(BITMAP_LOCK_LEDS[i]);
 }
+#endif
 
 void setup() {
     pinMode(LED_BUILTIN, OUTPUT);
@@ -153,7 +167,9 @@ void setup() {
 
     setupBluetooth();
     setupKeyboard();
+#ifdef SCREEN_ENABLE
     setupScreen();
+#endif
 }
 
 void loop() {
