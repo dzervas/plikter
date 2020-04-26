@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include <bluefruit.h>
-#include <Keypad.h>
 #include <Wire.h>
 
+// #define SCREEN_ENABLE
 #ifdef SCREEN_ENABLE
 #include <SSD1306Ascii.h>
 #include <SSD1306AsciiWire.h>
@@ -12,7 +12,6 @@
 
 #define DEVICE_NAME "Plikter"
 
-// #define SCREEN_ENABLE
 #ifdef SCREEN_ENABLE
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -20,23 +19,24 @@
 #endif
 
 // Keyboard options
+#include <KeypadShiftIn.h>
+
 #define KBD_ROWS 4
 #define KBD_COLUMNS 4
 const char KBD_MAP[KBD_ROWS][KBD_COLUMNS] = {
     { '1', '2', '3', 'U', },
-    { '7', '8', '9', 'L', },
     { '4', '5', '6', 'R', },
+    { '7', '8', '9', 'L', },
     { '*', '0', '#', 'D', },
 };
-byte KBD_INPUT_ROWS[KBD_COLUMNS] = { A0, A1, A2, A3, };
-byte KBD_INPUT_COLUMNS[KBD_ROWS] = { 16, 15, 7, 11, };
+const byte KBD_INPUT_COLUMNS[KBD_COLUMNS] = { A0, A1, A2, A3, };
 
 BLEDis bleDis;
 BLEHidAdafruit bleHid;
 #ifdef SCREEN_ENABLE
 SSD1306AsciiWireBitmap display;
 #endif
-Keypad keyboard(makeKeymap(KBD_MAP), KBD_INPUT_ROWS, KBD_INPUT_COLUMNS, sizeof(KBD_INPUT_ROWS), sizeof(KBD_INPUT_COLUMNS));
+KeypadShiftIn keyboard(KBD_INPUT_COLUMNS, KBD_ROWS, KBD_COLUMNS, 16, 15, 7);
 
 byte curRow = 0;
 byte curCol = 0;
@@ -59,6 +59,7 @@ void handleBtInput(KeypadEvent key, KeyState state) {
     // TODO: Use keyboardReport to set multiple keys & modifiers
     // https://github.com/adafruit/Adafruit_nRF52_Arduino/blob/master/libraries/Bluefruit52Lib/src/services/BLEHidAdafruit.cpp#L115
     bleHid.keyPress(key);
+    Serial.println(key);
 }
 
 void handleBtLed(uint16_t _conn_handle, uint8_t led_bitmap) {
@@ -70,10 +71,10 @@ void handleBtLed(uint16_t _conn_handle, uint8_t led_bitmap) {
 
 void setupBluetooth() {
     Bluefruit.begin();
-    Bluefruit.setTxPower(-40);
+    Bluefruit.setTxPower(-20);
     Bluefruit.setName(DEVICE_NAME);
     Bluefruit.setEventCallback(handleBtEvent);
-#ifndef SCREEN_ENABLE
+#ifdef SCREEN_ENABLE
     Bluefruit.autoConnLed(false);
 #endif
 
