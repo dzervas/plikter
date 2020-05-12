@@ -21,22 +21,23 @@
 // Keyboard options
 #include <KeypadShiftIn.h>
 
-#define KBD_ROWS 4
-#define KBD_COLUMNS 4
+#define KBD_ROWS 5
+#define KBD_COLUMNS 15
 const char KBD_MAP[KBD_ROWS][KBD_COLUMNS] = {
-    { '1', '2', '3', 'U', },
-    { '4', '5', '6', 'R', },
-    { '7', '8', '9', 'L', },
-    { '*', '0', '#', 'D', },
+    { '`', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', HID_KEY_BACKSPACE, HID_KEY_DELETE, },
+    { HID_KEY_TAB, 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\\', HID_KEY_PAGE_UP, },
+    { HID_KEY_ESCAPE, 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', HID_KEY_NONE, HID_KEY_RETURN, HID_KEY_PAGE_DOWN, },
+    { HID_KEY_SHIFT_LEFT, 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', HID_KEY_NONE, HID_KEY_SHIFT_RIGHT, HID_KEY_ARROW_UP, HID_KEY_INSERT, },
+    { KEYBOARD_MODIFIER_LEFTCTRL, KEYBOARD_MODIFIER_LEFTGUI, KEYBOARD_MODIFIER_LEFTALT, HID_KEY_NONE, HID_KEY_NONE, ' ', HID_KEY_NONE, HID_KEY_NONE, HID_KEY_NONE, HID_KEY_F15, KEYBOARD_MODIFIER_RIGHTALT, KEYBOARD_MODIFIER_RIGHTCTRL, HID_KEY_ARROW_LEFT, HID_KEY_ARROW_DOWN, HID_KEY_ARROW_RIGHT, },
 };
-const byte KBD_INPUT_COLUMNS[KBD_COLUMNS] = { A0, A1, A2, A3, };
+const byte KBD_INPUT_ROWS[KBD_ROWS] = { A0, A1, A2, A3, A4, };
 
 BLEDis bleDis;
 BLEHidAdafruit bleHid;
 #ifdef SCREEN_ENABLE
 SSD1306AsciiWireBitmap display;
 #endif
-KeypadShiftIn keyboard(KBD_INPUT_COLUMNS, KBD_ROWS, KBD_COLUMNS, 16, 15, 7);
+KeypadShiftIn keyboard(KBD_INPUT_ROWS, KBD_ROWS, KBD_COLUMNS, 16, 15, 7);
 
 byte curRow = 0;
 byte curCol = 0;
