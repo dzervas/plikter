@@ -4,6 +4,11 @@
 
 #define DEVICE_NAME "Plikter"
 
+// Got from adafruit PDF
+#define VBAT_MV_PER_LSB (0.73242188F)
+#define VBAT_DIVIDER (0.71275837F)
+#define VBAT_DIVIDER_COMP (1.403F)
+
 // Keyboard options
 #include <KeypadShiftIn.h>
 
@@ -36,10 +41,13 @@ const char ALT_KBD_MAP[KBD_ROWS][KBD_COLUMNS] = {
 };
 const byte KBD_INPUT_ROWS[KBD_ROWS] = { A5, A1, A2, A3, A4, };
 
+BLEBas bleBas;
 BLEDis bleDis;
 BLEHidAdafruit bleHid;
 KeypadShiftIn keyboard(KBD_INPUT_ROWS, KBD_ROWS, KBD_COLUMNS, 16, 15, 7);
+
 bool consumerPressed = false;
+uint32_t basTimer = 0;
 
 void handleBtEvent(ble_evt_t *event) {
     switch (event->header.evt_id) {
@@ -151,6 +159,29 @@ void handleBtLed(uint16_t _conn_handle, uint8_t led_bitmap) {
     digitalWrite(LED_BUILTIN, led_bitmap ? HIGH : LOW);
 }
 
+uint8_t mvToPer(float mvolts) {
+    if (mvolts >= 3000)
+        return 100;
+    else if (mvolts > 2900)
+        return 100 - ((3000 - mvolts) * 58) / 100;
+    else if (mvolts > 2740)
+        return 42 - ((2900 - mvolts) * 24) / 160;
+    else if (mvolts > 2440)
+        return 18 - ((2740 - mvolts) * 12) / 300;
+    else if (mvolts > 2100)
+        return 6 - ((2440 - mvolts) * 6) / 340;
+    else
+        return 0;
+}
+
+void updateBattery() {
+    uint32_t vbat = analogRead(PIN_VBAT);
+    float mvolts = vbat * VBAT_MV_PER_LSB;
+    uint8_t batp = mvToPer(mvolts);
+
+    bleBas.write(batp);
+}
+
 void setupBluetooth() {
     Bluefruit.begin();
     Bluefruit.setTxPower(-20);
@@ -175,6 +206,9 @@ void setupBluetooth() {
     bleHid.setKeyboardLedCallback(handleBtLed);
     bleHid.enableKeyboard(true);
     bleHid.enableMouse(false);
+
+    // Setup BLE Battery Service
+    bleBas.begin();
 
     /* Set connection interval (min, max) to your preferred value.
      * Note: It is already set by BLEHidAdafruit::begin() to 11.25ms - 15ms
@@ -216,11 +250,21 @@ void setupKeyboard() {
 
 void setup() {
     pinMode(LED_BUILTIN, OUTPUT);
+    // 3.0V reference
+    analogReference(AR_INTERNAL_3_0);
+    analogReadResolution(12);
 
     setupBluetooth();
     setupKeyboard();
+
+    basTimer = millis() - 10000;
 }
 
 void loop() {
     keyboard.getKeys();
+
+    if (millis() - basTimer > 10000) {
+        updateBattery();
+        basTimer = millis();
+    }
 }
