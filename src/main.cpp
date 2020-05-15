@@ -2,21 +2,7 @@
 #include <bluefruit.h>
 #include <Wire.h>
 
-// #define SCREEN_ENABLE
-#ifdef SCREEN_ENABLE
-#include <SSD1306Ascii.h>
-#include <SSD1306AsciiWire.h>
-
-#include "bitmaps.h"
-#endif
-
 #define DEVICE_NAME "Plikter"
-
-#ifdef SCREEN_ENABLE
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define SCREEN_I2C_ADDRESS 0x3C
-#endif
 
 // Keyboard options
 #include <KeypadShiftIn.h>
@@ -52,19 +38,12 @@ const byte KBD_INPUT_ROWS[KBD_ROWS] = { A5, A1, A2, A3, A4, };
 
 BLEDis bleDis;
 BLEHidAdafruit bleHid;
-#ifdef SCREEN_ENABLE
-SSD1306AsciiWireBitmap display;
-#endif
 KeypadShiftIn keyboard(KBD_INPUT_ROWS, KBD_ROWS, KBD_COLUMNS, 16, 15, 7);
 bool consumerPressed = false;
 
 void handleBtEvent(ble_evt_t *event) {
     switch (event->header.evt_id) {
         case BLE_GAP_EVT_CONNECTED:
-#ifdef SCREEN_ENABLE
-            display.setCursor(120, 0);
-            display.printBitmapPGM(BITMAP_BLUETOOTH[3]);
-#endif
             break;
         default: break;
     }
@@ -72,10 +51,8 @@ void handleBtEvent(ble_evt_t *event) {
 
 void handleBtInput(KeypadEvent key, KeyState state) {
     if (key == HID_KEY_F15 && state == PRESSED) {
-        Serial.println("ALT Keymap");
         keyboard.begin(makeKeymap(ALT_KBD_MAP));
     } else if (key == HID_KEY_F15 && state == RELEASED) {
-        Serial.println("Normal Keymap");
         keyboard.begin(makeKeymap(KBD_MAP));
     }
 
@@ -179,9 +156,6 @@ void setupBluetooth() {
     Bluefruit.setTxPower(-20);
     Bluefruit.setName(DEVICE_NAME);
     Bluefruit.setEventCallback(handleBtEvent);
-#ifdef SCREEN_ENABLE
-    Bluefruit.autoConnLed(false);
-#endif
 
     // Configure and Start Device Information Service
     bleDis.setManufacturer("DZervas");
@@ -240,44 +214,11 @@ void setupKeyboard() {
     keyboard.setHoldTime(-1);
 }
 
-#ifdef SCREEN_ENABLE
-void setupScreen() {
-    Wire.begin();
-    Wire.setClock(1000000L);
-
-    display.begin(&Adafruit128x64, SCREEN_I2C_ADDRESS);
-
-    display.setFont(System5x7);
-    display.clear();
-    display.print("Ready!");
-
-//    display.setCursor(0, 2);
-//    for (byte i=0; i < 4; i++)
-//        display.printBitmapPGM(BITMAP_BLUETOOTH[i]);
-//
-//    display.setCursor(0, 3);
-//    for (byte i=0; i < 7; i++)
-//        display.printBitmapPGM(BITMAP_BATTERY[i]);
-//
-//    display.setCursor(0, 4);
-//    for (byte i=2; i < 5; i++)
-//        display.printBitmapPGM(BITMAP_LOCK_LEDS[i]);
-}
-#endif
-
 void setup() {
     pinMode(LED_BUILTIN, OUTPUT);
 
-    Serial.begin(115200);
-    while(!Serial) delay(10);
-
-    Serial.println("Plikter v0.1.0");
-
     setupBluetooth();
     setupKeyboard();
-#ifdef SCREEN_ENABLE
-    setupScreen();
-#endif
 }
 
 void loop() {
