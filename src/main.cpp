@@ -12,6 +12,7 @@
 // Keyboard options
 #include <KeypadShiftIn.h>
 
+#define HID_KEY_FN                   HID_KEY_F15
 #define HID_KEY_PLAY_PAUSE           HID_KEY_KEYPAD_1
 #define HID_KEY_STOP                 HID_KEY_KEYPAD_2
 #define HID_KEY_SCAN_PREVIOUS        HID_KEY_KEYPAD_3
@@ -30,7 +31,7 @@ const char KBD_MAP[KBD_ROWS][KBD_COLUMNS] = {
         { HID_KEY_TAB, HID_KEY_Q, HID_KEY_W, HID_KEY_E, HID_KEY_R, HID_KEY_T, HID_KEY_Y, HID_KEY_U, HID_KEY_I, HID_KEY_O, HID_KEY_P, HID_KEY_BRACKET_LEFT, HID_KEY_BRACKET_RIGHT, HID_KEY_BACKSLASH, HID_KEY_PAGE_UP, },
         { HID_KEY_ESCAPE, HID_KEY_A, HID_KEY_S, HID_KEY_D, HID_KEY_F, HID_KEY_G, HID_KEY_H, HID_KEY_J, HID_KEY_K, HID_KEY_L, HID_KEY_SEMICOLON, HID_KEY_APOSTROPHE, KEYPAD_NO_KEY, HID_KEY_RETURN, HID_KEY_PAGE_DOWN, },
         { HID_KEY_SHIFT_LEFT, HID_KEY_Z, HID_KEY_X, HID_KEY_C, HID_KEY_V, HID_KEY_B, HID_KEY_N, HID_KEY_M, HID_KEY_COMMA, HID_KEY_PERIOD, HID_KEY_SLASH, KEYPAD_NO_KEY, HID_KEY_SHIFT_RIGHT, HID_KEY_ARROW_UP, HID_KEY_INSERT, },
-        { HID_KEY_CONTROL_LEFT, HID_KEY_GUI_LEFT, HID_KEY_ALT_LEFT, KEYPAD_NO_KEY, KEYPAD_NO_KEY, HID_KEY_SPACE, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, HID_KEY_F15, HID_KEY_ALT_RIGHT, HID_KEY_CONTROL_RIGHT, HID_KEY_ARROW_LEFT, HID_KEY_ARROW_DOWN, HID_KEY_ARROW_RIGHT, },
+        { HID_KEY_CONTROL_LEFT, HID_KEY_GUI_LEFT, HID_KEY_ALT_LEFT, KEYPAD_NO_KEY, KEYPAD_NO_KEY, HID_KEY_SPACE, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, HID_KEY_FN, HID_KEY_ALT_RIGHT, HID_KEY_CONTROL_RIGHT, HID_KEY_ARROW_LEFT, HID_KEY_ARROW_DOWN, HID_KEY_ARROW_RIGHT, },
 };
 const char ALT_KBD_MAP[KBD_ROWS][KBD_COLUMNS] = {
         { KEYPAD_NO_KEY, HID_KEY_F1, HID_KEY_F2, HID_KEY_F3, HID_KEY_F4, HID_KEY_F5, HID_KEY_F6, HID_KEY_F7, HID_KEY_F8, HID_KEY_F9, HID_KEY_F10, HID_KEY_F11, HID_KEY_F12, KEYPAD_NO_KEY, KEYPAD_NO_KEY, },
@@ -58,9 +59,9 @@ void handleBtEvent(ble_evt_t *event) {
 }
 
 void handleBtInput(KeypadEvent key, KeyState state) {
-    if (key == HID_KEY_F15 && state == PRESSED) {
+    if (key == HID_KEY_FN && state == PRESSED) {
         keyboard.begin(makeKeymap(ALT_KBD_MAP));
-    } else if (key == HID_KEY_F15 && state == RELEASED) {
+    } else if (key == HID_KEY_FN && state == RELEASED) {
         keyboard.begin(makeKeymap(KBD_MAP));
     }
 
@@ -70,7 +71,7 @@ void handleBtInput(KeypadEvent key, KeyState state) {
 
     for (byte i=0, j=0; i < 6 && j < 6; i++) {
         // F15 is handled above as Fn key
-        if (keyboard.key[i].kchar == KEYPAD_NO_KEY || keyboard.key[i].kchar == HID_KEY_F15)
+        if (keyboard.key[i].kchar == KEYPAD_NO_KEY || keyboard.key[i].kchar == HID_KEY_FN)
             continue;
 
         if (keyboard.key[i].kstate == PRESSED || keyboard.key[i].kstate == HOLD) {
