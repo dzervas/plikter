@@ -69,7 +69,8 @@ void handleBtInput(KeypadEvent key, KeyState state) {
     uint16_t consumer = 0;
 
     for (byte i=0, j=0; i < 6 && j < 6; i++) {
-        if (keyboard.key[i].kchar == KEYPAD_NO_KEY)
+        // F15 is handled above as Fn key
+        if (keyboard.key[i].kchar == KEYPAD_NO_KEY || keyboard.key[i].kchar == HID_KEY_F15)
             continue;
 
         if (keyboard.key[i].kstate == PRESSED || keyboard.key[i].kstate == HOLD) {
