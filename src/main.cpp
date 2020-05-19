@@ -1,13 +1,11 @@
 #include <Arduino.h>
 #include <bluefruit.h>
-#include <Wire.h>
+#include <InternalFileSystem.h>
 
 #define DEVICE_NAME "Plikter"
 
 // Got from adafruit PDF
 #define VBAT_MV_PER_LSB (0.73242188F)
-#define VBAT_DIVIDER (0.71275837F)
-#define VBAT_DIVIDER_COMP (1.403F)
 
 // Keyboard options
 #include <KeypadShiftIn.h>
@@ -49,6 +47,7 @@ KeypadShiftIn keyboard(KBD_INPUT_ROWS, KBD_ROWS, KBD_COLUMNS, 16, 15, 7);
 
 bool consumerPressed = false;
 uint32_t basTimer = 0;
+uint8_t clearBonds = 0;
 
 void handleBtEvent(ble_evt_t *event) {
     switch (event->header.evt_id) {
@@ -61,8 +60,10 @@ void handleBtEvent(ble_evt_t *event) {
 void handleBtInput(KeypadEvent key, KeyState state) {
     if (key == HID_KEY_FN && state == PRESSED) {
         keyboard.begin(makeKeymap(ALT_KBD_MAP));
+        clearBonds = 1;
     } else if (key == HID_KEY_FN && state == RELEASED) {
         keyboard.begin(makeKeymap(KBD_MAP));
+        clearBonds = 0;
     }
 
     uint8_t report[6] = { 0, 0, 0, 0, 0, 0 };
@@ -70,12 +71,14 @@ void handleBtInput(KeypadEvent key, KeyState state) {
     uint16_t consumer = 0;
 
     for (byte i=0, j=0; i < 6 && j < 6; i++) {
-        // F15 is handled above as Fn key
         if (keyboard.key[i].kchar == KEYPAD_NO_KEY || keyboard.key[i].kchar == HID_KEY_FN)
             continue;
 
         if (keyboard.key[i].kstate == PRESSED || keyboard.key[i].kstate == HOLD) {
             switch (keyboard.key[i].kchar) {
+                case HID_KEY_DELETE:
+                    clearBonds++;
+                    break;
                 case HID_KEY_CONTROL_LEFT:
                     modifier |= KEYBOARD_MODIFIER_LEFTCTRL;
                     break;
@@ -90,6 +93,7 @@ void handleBtInput(KeypadEvent key, KeyState state) {
                     break;
                 case HID_KEY_CONTROL_RIGHT:
                     modifier |= KEYBOARD_MODIFIER_RIGHTCTRL;
+                    clearBonds++;
                     break;
                 case HID_KEY_SHIFT_RIGHT:
                     modifier |= KEYBOARD_MODIFIER_RIGHTSHIFT;
@@ -99,6 +103,7 @@ void handleBtInput(KeypadEvent key, KeyState state) {
                     break;
                 case HID_KEY_GUI_RIGHT:
                     modifier |= KEYBOARD_MODIFIER_RIGHTGUI;
+                    clearBonds++;
                     break;
                 case HID_KEY_F13:
                     // TODO: Previous BT connection
@@ -142,11 +147,20 @@ void handleBtInput(KeypadEvent key, KeyState state) {
         j++;
     }
 
+    if (clearBonds >= 4) {
+        // Actually happens when Fn + Right Ctrl +
+        Serial.println("Clearing Filesystem");
+        clearBonds = 0;
+        InternalFS.begin();
+        InternalFS.format();
+        Bluefruit.clearBonds();
+        Bluefruit.Central.clearBonds();
+    }
+
     if (consumer > 0) {
         bleHid.consumerKeyPress(consumer);
         consumerPressed = true;
-    }
-    else if (consumerPressed) {
+    } else if (consumerPressed) {
         bleHid.consumerKeyRelease();
         consumerPressed = false;
     }
@@ -256,6 +270,8 @@ void setup() {
     analogReference(AR_INTERNAL_3_0);
     analogReadResolution(12);
 
+    Serial.begin(115200);
+
     setupBluetooth();
     setupKeyboard();
 
@@ -265,8 +281,11 @@ void setup() {
 void loop() {
     keyboard.getKeys();
 
-    if (millis() - basTimer > 10000) {
+    if (millis() - basTimer > 30000) {
         updateBattery();
         basTimer = millis();
     }
+
+    // I think that lack of this is causing lag and dropped packets
+    delay(15);
 }
