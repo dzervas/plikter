@@ -45,8 +45,10 @@ BLEDis bleDis;
 BLEHidAdafruit bleHid;
 KeypadShiftIn keyboard(KBD_INPUT_ROWS, KBD_ROWS, KBD_COLUMNS, 16, 15, 7);
 
+SoftwareTimer batteryTimer;
+SoftwareTimer inputTimer;
+
 bool consumerPressed = false;
-uint32_t basTimer = 0;
 uint8_t clearBonds = 0;
 
 void handleBtEvent(ble_evt_t *event) {
@@ -190,7 +192,11 @@ uint8_t mvToPer(float mvolts) {
         return 0;
 }
 
-void updateBattery() {
+void updateInput(TimerHandle_t _handle) {
+    keyboard.getKeys();
+}
+
+void updateBattery(TimerHandle_t _handle) {
     uint32_t vbat = analogRead(PIN_VBAT);
     float mvolts = vbat * VBAT_MV_PER_LSB;
     uint8_t batp = mvToPer(mvolts);
@@ -275,17 +281,12 @@ void setup() {
     setupBluetooth();
     setupKeyboard();
 
-    basTimer = millis() - 10000;
+    inputTimer.begin(15, updateInput);
+    batteryTimer.begin(30000, updateBattery);
+    inputTimer.start();
+    batteryTimer.start();
+
+    suspendLoop();
 }
 
-void loop() {
-    keyboard.getKeys();
-
-    if (millis() - basTimer > 30000) {
-        updateBattery();
-        basTimer = millis();
-    }
-
-    // I think that lack of this is causing lag and dropped packets
-    delay(15);
-}
+void loop() {}
