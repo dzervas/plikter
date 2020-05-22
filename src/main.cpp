@@ -245,6 +245,7 @@ void setupBluetooth() {
 
     // Include BLE HID service
     Bluefruit.Advertising.addService(bleHid);
+    Bluefruit.Advertising.addService(bleBas);
 
     // There is enough room for the dev name in the advertising packet
     Bluefruit.Advertising.addName();
