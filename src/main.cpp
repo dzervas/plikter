@@ -3,6 +3,7 @@
 #include <InternalFileSystem.h>
 
 #define DEVICE_NAME "Plikter"
+#define MAX_CONNECTIONS 10
 
 // Got from adafruit PDF
 #define VBAT_MV_PER_LSB (0.73242188F)
@@ -10,6 +11,8 @@
 // Keyboard options
 #include <KeypadShiftIn.h>
 
+#define HID_KEY_BT_PREVIOUS          HID_KEY_F13
+#define HID_KEY_BT_NEXT              HID_KEY_F14
 #define HID_KEY_FN                   HID_KEY_F15
 #define HID_KEY_PLAY_PAUSE           HID_KEY_KEYPAD_1
 #define HID_KEY_STOP                 HID_KEY_KEYPAD_2
@@ -51,15 +54,72 @@ SoftwareTimer inputTimer;
 bool consumerPressed = false;
 uint8_t clearBonds = 0;
 
-void handleBtEvent(ble_evt_t *event) {
-    switch (event->header.evt_id) {
-        case BLE_GAP_EVT_CONNECTED:
-            break;
-        default: break;
+typedef struct Conn {
+    int handle;
+    Conn* next; // Pointer to next node in DLL
+    Conn* prev; // Pointer to previous node in DLL
+} Conn;
+
+Conn* connection = NULL;
+
+void conn_push(uint16_t conn_handle) {
+    Conn* new_conn = (Conn *) malloc(sizeof(Conn));
+    Serial.printf("Old head: %p New to be head: %p\n", connection, new_conn);
+    new_conn->handle = conn_handle;
+    new_conn->next = NULL;
+
+    if (connection != NULL) {
+        // Put the new connection to the end
+        while (connection->next != NULL)
+            connection = connection->next;
+
+        connection->next = new_conn;
+        new_conn->prev = connection;
     }
+
+    connection = new_conn;
+}
+
+uint16_t conn_pop(uint16_t conn_handle) {
+    if (connection == NULL)
+        return BLE_CONN_HANDLE_INVALID;
+
+    while (connection->handle != conn_handle) {
+        if (connection->next != NULL)
+            connection = connection->next;
+        else if (connection->prev != NULL)
+            connection = connection->prev;
+        else
+            return BLE_CONN_HANDLE_INVALID;
+    }
+
+    Conn* old_conn = connection;
+    uint16_t old_handle = connection->handle;
+
+    if (connection->prev != NULL && connection->next != NULL) {
+        // Corner case where the deleted node is in the middle of the linked list
+        connection->prev->next = connection->next;
+        connection = connection->prev;
+    } else if (connection->prev != NULL) {
+        // Normal case where the connection is in the end of the linked list
+        connection = connection->prev;
+        connection->next = NULL;
+    } else if (connection->next != NULL) {
+        // Corner case where the deleted node is in the start of the linked list
+        connection = connection->next;
+        connection->prev = NULL;
+    } else {
+        connection = NULL;
+    }
+
+    free(old_conn);
+
+    return old_handle;
 }
 
 void handleBtInput(KeypadEvent key, KeyState state) {
+    if (connection == NULL) return;
+
     if (key == HID_KEY_FN && state == PRESSED) {
         keyboard.begin(makeKeymap(ALT_KBD_MAP));
         clearBonds = 1;
@@ -78,9 +138,6 @@ void handleBtInput(KeypadEvent key, KeyState state) {
 
         if (keyboard.key[i].kstate == PRESSED || keyboard.key[i].kstate == HOLD) {
             switch (keyboard.key[i].kchar) {
-                case HID_KEY_DELETE:
-                    clearBonds++;
-                    break;
                 case HID_KEY_CONTROL_LEFT:
                     modifier |= KEYBOARD_MODIFIER_LEFTCTRL;
                     break;
@@ -107,11 +164,25 @@ void handleBtInput(KeypadEvent key, KeyState state) {
                     modifier |= KEYBOARD_MODIFIER_RIGHTGUI;
                     clearBonds++;
                     break;
-                case HID_KEY_F13:
-                    // TODO: Previous BT connection
+                case HID_KEY_BT_PREVIOUS:
+                    if (connection->prev != NULL)
+                        connection = connection->prev;
+                    else {
+                        while (connection->next != NULL)
+                            connection = connection->next;
+                    }
+
+                    Serial.printf("Prev handle: %d\n", connection->handle);
                     break;
-                case HID_KEY_F14:
-                    // TODO: Next BT connection
+                case HID_KEY_BT_NEXT:
+                    if (connection->next != NULL)
+                        connection = connection->next;
+                    else {
+                        while (connection->prev != NULL)
+                            connection = connection->prev;
+                    }
+
+                    Serial.printf("Next handle: %d\n", connection->handle);
                     break;
                 case HID_KEY_PLAY_PAUSE:
                     consumer = HID_USAGE_CONSUMER_PLAY_PAUSE;
@@ -140,6 +211,9 @@ void handleBtInput(KeypadEvent key, KeyState state) {
                 case HID_KEY_BRIGHTNESS_INCREMENT:
                     consumer = HID_USAGE_CONSUMER_BRIGHTNESS_INCREMENT;
                     break;
+                case HID_KEY_DELETE:
+                    // Use delete key for the clearbonds shortcut but report it too
+                    clearBonds++;
                 default:
                     report[j] = keyboard.key[i].kchar;
                     break;
@@ -150,7 +224,7 @@ void handleBtInput(KeypadEvent key, KeyState state) {
     }
 
     if (clearBonds >= 4) {
-        // Actually happens when Fn + Right Ctrl +
+        // Actually happens when Fn + Right Alt + Right Ctrl + Delete
         Serial.println("Clearing Filesystem");
         clearBonds = 0;
         InternalFS.begin();
@@ -160,14 +234,14 @@ void handleBtInput(KeypadEvent key, KeyState state) {
     }
 
     if (consumer > 0) {
-        bleHid.consumerKeyPress(consumer);
+        bleHid.consumerKeyPress(connection->handle, consumer);
         consumerPressed = true;
     } else if (consumerPressed) {
-        bleHid.consumerKeyRelease();
+        bleHid.consumerKeyRelease(connection->handle);
         consumerPressed = false;
     }
 
-    bleHid.keyboardReport(modifier, report);
+    bleHid.keyboardReport(connection->handle, modifier, report);
 }
 
 void handleBtLed(uint16_t _conn_handle, uint8_t led_bitmap) {
@@ -197,18 +271,46 @@ void updateInput(TimerHandle_t _handle) {
 }
 
 void updateBattery(TimerHandle_t _handle) {
+    if (connection == NULL) return;
+
     uint32_t vbat = analogRead(PIN_VBAT);
     float mvolts = vbat * VBAT_MV_PER_LSB;
     uint8_t batp = mvToPer(mvolts);
 
-    bleBas.write(batp);
+    bleBas.notify(connection->handle, batp);
+}
+
+void connect_callback(uint16_t conn_handle) {
+    Serial.printf("Connection! %d\n", conn_handle);
+    conn_push(conn_handle);
+
+    if (connection != NULL && connection->prev == NULL && connection->next == NULL) {
+        Serial.println("Started timers");
+        inputTimer.start();
+        batteryTimer.start();
+    }
+
+    // Keep advertising
+    if (!Bluefruit.Advertising.isRunning())
+        Bluefruit.Advertising.start(0);
+}
+
+void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
+    if ((connection != NULL && connection->prev == NULL && connection->next == NULL) || connection == NULL) {
+        Serial.println("Stopped timers");
+        inputTimer.stop();
+        batteryTimer.stop();
+    }
+
+    conn_pop(conn_handle);
 }
 
 void setupBluetooth() {
-    Bluefruit.begin();
-    Bluefruit.setTxPower(-20);
+    Bluefruit.begin(2, 0);
+    Bluefruit.setTxPower(-12);
     Bluefruit.setName(DEVICE_NAME);
-    Bluefruit.setEventCallback(handleBtEvent);
+    Bluefruit.Periph.setConnectCallback(connect_callback);
+    Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
 
     // Configure and Start Device Information Service
     bleDis.setManufacturer("DZervas");
@@ -236,7 +338,7 @@ void setupBluetooth() {
      * Note: It is already set by BLEHidAdafruit::begin() to 11.25ms - 15ms
      * min = 9*1.25=11.25 ms, max = 12*1.25= 15 ms
      */
-//    Bluefruit.Periph.setConnInterval(9, 12);
+    Bluefruit.Periph.setConnInterval(9, 12);
 
     // Advertising packet
     Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
@@ -282,10 +384,8 @@ void setup() {
     setupBluetooth();
     setupKeyboard();
 
-    inputTimer.begin(15, updateInput);
+    inputTimer.begin(10, updateInput);
     batteryTimer.begin(30000, updateBattery);
-    inputTimer.start();
-    batteryTimer.start();
 
     suspendLoop();
 }

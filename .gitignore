@@ -82,3 +82,4 @@ dkms.conf
 *.ngc
 *_back.svg
 *_front.svg
+.idea
