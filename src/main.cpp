@@ -1,9 +1,7 @@
 #include <Arduino.h>
 #include <bluefruit.h>
-#include <InternalFileSystem.h>
 
 #define DEVICE_NAME "Plikter"
-#define MAX_CONNECTIONS 10
 
 // Got from adafruit PDF
 #define VBAT_MV_PER_LSB (0.73242188F)
@@ -35,11 +33,11 @@ const char KBD_MAP[KBD_ROWS][KBD_COLUMNS] = {
         { HID_KEY_CONTROL_LEFT, HID_KEY_GUI_LEFT, HID_KEY_ALT_LEFT, KEYPAD_NO_KEY, KEYPAD_NO_KEY, HID_KEY_SPACE, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, HID_KEY_FN, HID_KEY_ALT_RIGHT, HID_KEY_CONTROL_RIGHT, HID_KEY_ARROW_LEFT, HID_KEY_ARROW_DOWN, HID_KEY_ARROW_RIGHT, },
 };
 const char ALT_KBD_MAP[KBD_ROWS][KBD_COLUMNS] = {
-        { KEYPAD_NO_KEY, HID_KEY_F1, HID_KEY_F2, HID_KEY_F3, HID_KEY_F4, HID_KEY_F5, HID_KEY_F6, HID_KEY_F7, HID_KEY_F8, HID_KEY_F9, HID_KEY_F10, HID_KEY_F11, HID_KEY_F12, KEYPAD_NO_KEY, KEYPAD_NO_KEY, },
+        { KEYPAD_NO_KEY, HID_KEY_F1, HID_KEY_F2, HID_KEY_F3, HID_KEY_F4, HID_KEY_F5, HID_KEY_F6, HID_KEY_F7, HID_KEY_F8, HID_KEY_F9, HID_KEY_F10, HID_KEY_F11, HID_KEY_F12, KEYPAD_NO_KEY, HID_KEY_DELETE, },
         { KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, HID_KEY_PRINT_SCREEN, HID_KEY_SCROLL_LOCK, HID_KEY_PAUSE, KEYPAD_NO_KEY, KEYPAD_NO_KEY, HID_KEY_HOME, },
         { KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, HID_KEY_END, },
-        { KEYPAD_NO_KEY, KEYPAD_NO_KEY, HID_KEY_PLAY_PAUSE, HID_KEY_STOP, HID_KEY_SCAN_PREVIOUS, HID_KEY_SCAN_NEXT, HID_KEY_VOLUME_DECREMENT, HID_KEY_VOLUME_INCREMENT, HID_KEY_MUTE, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, },
-        { KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, HID_KEY_F13, KEYPAD_NO_KEY, HID_KEY_F14, },
+        { KEYPAD_NO_KEY, KEYPAD_NO_KEY, HID_KEY_PLAY_PAUSE, HID_KEY_STOP, HID_KEY_SCAN_PREVIOUS, HID_KEY_SCAN_NEXT, HID_KEY_VOLUME_DECREMENT, HID_KEY_VOLUME_INCREMENT, HID_KEY_MUTE, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, HID_KEY_BRIGHTNESS_INCREMENT, KEYPAD_NO_KEY, },
+        { KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, KEYPAD_NO_KEY, HID_KEY_FN, HID_KEY_ALT_RIGHT, HID_KEY_CONTROL_RIGHT, HID_KEY_BT_PREVIOUS, HID_KEY_BRIGHTNESS_DECREMENT, HID_KEY_BT_NEXT, },
 };
 const byte KBD_INPUT_ROWS[KBD_ROWS] = { A5, A1, A2, A3, A4, };
 
@@ -64,7 +62,6 @@ Conn* connection = NULL;
 
 void conn_push(uint16_t conn_handle) {
     Conn* new_conn = (Conn *) malloc(sizeof(Conn));
-    Serial.printf("Old head: %p New to be head: %p\n", connection, new_conn);
     new_conn->handle = conn_handle;
     new_conn->next = NULL;
 
@@ -123,6 +120,7 @@ void handleBtInput(KeypadEvent key, KeyState state) {
     if (key == HID_KEY_FN && state == PRESSED) {
         keyboard.begin(makeKeymap(ALT_KBD_MAP));
         clearBonds = 1;
+        Serial.printf("Fn start: %d\n", clearBonds);
     } else if (key == HID_KEY_FN && state == RELEASED) {
         keyboard.begin(makeKeymap(KBD_MAP));
         clearBonds = 0;
@@ -152,7 +150,6 @@ void handleBtInput(KeypadEvent key, KeyState state) {
                     break;
                 case HID_KEY_CONTROL_RIGHT:
                     modifier |= KEYBOARD_MODIFIER_RIGHTCTRL;
-                    clearBonds++;
                     break;
                 case HID_KEY_SHIFT_RIGHT:
                     modifier |= KEYBOARD_MODIFIER_RIGHTSHIFT;
@@ -162,7 +159,6 @@ void handleBtInput(KeypadEvent key, KeyState state) {
                     break;
                 case HID_KEY_GUI_RIGHT:
                     modifier |= KEYBOARD_MODIFIER_RIGHTGUI;
-                    clearBonds++;
                     break;
                 case HID_KEY_BT_PREVIOUS:
                     if (connection->prev != NULL)
@@ -213,7 +209,10 @@ void handleBtInput(KeypadEvent key, KeyState state) {
                     break;
                 case HID_KEY_DELETE:
                     // Use delete key for the clearbonds shortcut but report it too
-                    clearBonds++;
+                    if (clearBonds > 0 && clearBonds < 4) {
+                        clearBonds++;
+                        Serial.printf("Del: %d\n", clearBonds);
+                    }
                 default:
                     report[j] = keyboard.key[i].kchar;
                     break;
@@ -224,13 +223,9 @@ void handleBtInput(KeypadEvent key, KeyState state) {
     }
 
     if (clearBonds >= 4) {
-        // Actually happens when Fn + Right Alt + Right Ctrl + Delete
-        Serial.println("Clearing Filesystem");
+        // Actually happens when Fn is pressed and Delete is pressed 4 times
         clearBonds = 0;
-        InternalFS.begin();
-        InternalFS.format();
         Bluefruit.clearBonds();
-        Bluefruit.Central.clearBonds();
     }
 
     if (consumer > 0) {
@@ -281,13 +276,13 @@ void updateBattery(TimerHandle_t _handle) {
 }
 
 void connect_callback(uint16_t conn_handle) {
-    Serial.printf("Connection! %d\n", conn_handle);
     conn_push(conn_handle);
 
     if (connection != NULL && connection->prev == NULL && connection->next == NULL) {
         Serial.println("Started timers");
         inputTimer.start();
         batteryTimer.start();
+        updateBattery(NULL);
     }
 
     // Keep advertising
