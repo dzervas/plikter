@@ -316,8 +316,11 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
         batteryTimer.stop();
     }
 
-    Bluefruit.disconnect(conn_handle);
     conn_pop(conn_handle);
+
+    // Keep advertising
+    if (!Bluefruit.Advertising.isRunning())
+        Bluefruit.Advertising.start(0);
 
     bitClear(insideTimers, TIMER_MAP_DISCONNECT);
 }
