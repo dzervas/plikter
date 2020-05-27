@@ -60,6 +60,12 @@ typedef struct Conn {
 
 Conn* connection = NULL;
 
+#define TIMER_MAP_CONNECT 2
+#define TIMER_MAP_DISCONNECT 2
+#define TIMER_MAP_INPUT 2
+#define TIMER_MAP_BATTERY 3
+uint8_t insideTimers = 0;
+
 void conn_push(uint16_t conn_handle) {
     Conn* new_conn = (Conn *) malloc(sizeof(Conn));
     new_conn->handle = conn_handle;
@@ -94,15 +100,15 @@ uint16_t conn_pop(uint16_t conn_handle) {
     uint16_t old_handle = connection->handle;
 
     if (connection->prev != NULL && connection->next != NULL) {
-        // Corner case where the deleted node is in the middle of the linked list
+        // The deleted node is in the middle of the linked list
         connection->prev->next = connection->next;
         connection = connection->prev;
     } else if (connection->prev != NULL) {
-        // Normal case where the connection is in the end of the linked list
+        // The connection is in the end of the linked list
         connection = connection->prev;
         connection->next = NULL;
     } else if (connection->next != NULL) {
-        // Corner case where the deleted node is in the start of the linked list
+        // The deleted node is in the start of the linked list
         connection = connection->next;
         connection->prev = NULL;
     } else {
@@ -120,7 +126,6 @@ void handleBtInput(KeypadEvent key, KeyState state) {
     if (key == HID_KEY_FN && state == PRESSED) {
         keyboard.begin(makeKeymap(ALT_KBD_MAP));
         clearBonds = 1;
-        Serial.printf("Fn start: %d\n", clearBonds);
     } else if (key == HID_KEY_FN && state == RELEASED) {
         keyboard.begin(makeKeymap(KBD_MAP));
         clearBonds = 0;
@@ -209,10 +214,8 @@ void handleBtInput(KeypadEvent key, KeyState state) {
                     break;
                 case HID_KEY_DELETE:
                     // Use delete key for the clearbonds shortcut but report it too
-                    if (clearBonds > 0 && clearBonds < 4) {
+                    if (clearBonds > 0 && clearBonds < 4)
                         clearBonds++;
-                        Serial.printf("Del: %d\n", clearBonds);
-                    }
                 default:
                     report[j] = keyboard.key[i].kchar;
                     break;
@@ -262,20 +265,31 @@ uint8_t mvToPer(float mvolts) {
 }
 
 void updateInput(TimerHandle_t _handle) {
+    bitSet(insideTimers, TIMER_MAP_INPUT);
+
     keyboard.getKeys();
+
+    bitClear(insideTimers, TIMER_MAP_INPUT);
 }
 
 void updateBattery(TimerHandle_t _handle) {
     if (connection == NULL) return;
+
+    bitSet(insideTimers, TIMER_MAP_BATTERY);
 
     uint32_t vbat = analogRead(PIN_VBAT);
     float mvolts = vbat * VBAT_MV_PER_LSB;
     uint8_t batp = mvToPer(mvolts);
 
     bleBas.notify(connection->handle, batp);
+
+    bitClear(insideTimers, TIMER_MAP_BATTERY);
 }
 
 void connect_callback(uint16_t conn_handle) {
+    while (insideTimers != 0);
+    bitSet(insideTimers, TIMER_MAP_CONNECT);
+
     conn_push(conn_handle);
 
     if (connection != NULL && connection->prev == NULL && connection->next == NULL) {
@@ -288,16 +302,24 @@ void connect_callback(uint16_t conn_handle) {
     // Keep advertising
     if (!Bluefruit.Advertising.isRunning())
         Bluefruit.Advertising.start(0);
+
+    bitClear(insideTimers, TIMER_MAP_CONNECT);
 }
 
 void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
+    while (insideTimers != 0);
+    bitSet(insideTimers, TIMER_MAP_DISCONNECT);
+
     if ((connection != NULL && connection->prev == NULL && connection->next == NULL) || connection == NULL) {
         Serial.println("Stopped timers");
         inputTimer.stop();
         batteryTimer.stop();
     }
 
+    Bluefruit.disconnect(conn_handle);
     conn_pop(conn_handle);
+
+    bitClear(insideTimers, TIMER_MAP_DISCONNECT);
 }
 
 void setupBluetooth() {
@@ -380,7 +402,7 @@ void setup() {
     setupKeyboard();
 
     inputTimer.begin(10, updateInput);
-    batteryTimer.begin(30000, updateBattery);
+    batteryTimer.begin(60000, updateBattery);
 
     suspendLoop();
 }
