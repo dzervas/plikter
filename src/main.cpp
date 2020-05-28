@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <bluefruit.h>
+#include <InternalFileSystem.h>
 
 #define DEVICE_NAME "Plikter"
 
@@ -120,16 +121,20 @@ uint16_t conn_pop(uint16_t conn_handle) {
     return old_handle;
 }
 
-void handleBtInput(KeypadEvent key, KeyState state) {
-    if (connection == NULL) return;
+void handleFnMap(KeypadEvent key, KeyState state) {
+    if (key != HID_KEY_FN) return;
 
-    if (key == HID_KEY_FN && state == PRESSED) {
+    if (state == PRESSED) {
         keyboard.begin(makeKeymap(ALT_KBD_MAP));
         clearBonds = 1;
-    } else if (key == HID_KEY_FN && state == RELEASED) {
+    } else if (state == RELEASED) {
         keyboard.begin(makeKeymap(KBD_MAP));
         clearBonds = 0;
     }
+}
+
+void handleKeys() {
+    if (connection == NULL) return;
 
     uint8_t report[6] = { 0, 0, 0, 0, 0, 0 };
     uint8_t modifier = 0;
@@ -265,10 +270,16 @@ uint8_t mvToPer(float mvolts) {
 }
 
 void updateInput(TimerHandle_t _handle) {
+    if (bitRead(insideTimers, TIMER_MAP_INPUT)) return;
     bitSet(insideTimers, TIMER_MAP_INPUT);
+    uint32_t startTime = millis();
 
     keyboard.getKeys();
+    handleKeys();
 
+    uint32_t deltaTime = millis() - startTime;
+    if (deltaTime > 0)
+        Serial.printf(" Total Time: %d\n", deltaTime);
     bitClear(insideTimers, TIMER_MAP_INPUT);
 }
 
@@ -389,7 +400,7 @@ void setupBluetooth() {
 
 void setupKeyboard() {
     keyboard.begin(makeKeymap(KBD_MAP));
-    keyboard.addStatedEventListener(handleBtInput);
+    keyboard.addStatedEventListener(handleFnMap);
     keyboard.setHoldTime(-1);
 }
 
@@ -404,8 +415,10 @@ void setup() {
     setupBluetooth();
     setupKeyboard();
 
-    inputTimer.begin(10, updateInput);
+    inputTimer.begin(5, updateInput);
+    inputTimer.stop();
     batteryTimer.begin(60000, updateBattery);
+    batteryTimer.stop();
 
     suspendLoop();
 }
