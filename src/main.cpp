@@ -122,118 +122,124 @@ uint16_t conn_pop(uint16_t conn_handle) {
 }
 
 void handleFnMap(KeypadEvent key, KeyState state) {
-    if (key != HID_KEY_FN) return;
+    if (state != PRESSED) {
+        if (state == RELEASED && key == HID_KEY_FN) {
+            keyboard.begin(makeKeymap(KBD_MAP));
+            clearBonds = 0;
+        }
 
-    if (state == PRESSED) {
-        keyboard.begin(makeKeymap(ALT_KBD_MAP));
-        clearBonds = 1;
-    } else if (state == RELEASED) {
-        keyboard.begin(makeKeymap(KBD_MAP));
-        clearBonds = 0;
+        return;
+    }
+
+    switch (key) {
+        case HID_KEY_FN:
+            keyboard.begin(makeKeymap(ALT_KBD_MAP));
+            clearBonds = 1;
+            break;
+        case HID_KEY_BT_PREVIOUS:
+            if (connection == NULL) break;
+
+            if (connection->prev != NULL)
+                connection = connection->prev;
+            else {
+                while (connection->next != NULL)
+                    connection = connection->next;
+            }
+
+            Serial.printf("Prev handle: %d\n", connection->handle);
+            break;
+        case HID_KEY_BT_NEXT:
+            if (connection == NULL) break;
+
+            if (connection->next != NULL)
+                connection = connection->next;
+            else {
+                while (connection->prev != NULL)
+                    connection = connection->prev;
+            }
+
+            Serial.printf("Next handle: %d\n", connection->handle);
+            break;
+        case HID_KEY_DELETE:
+            // Use delete key for the clearbonds shortcut but report it too
+            if (clearBonds > 0 && clearBonds < 4)
+                clearBonds++;
+            break;
     }
 }
 
 void handleKeys() {
     if (connection == NULL) return;
 
-    uint8_t report[6] = { 0, 0, 0, 0, 0, 0 };
-    uint8_t modifier = 0;
+    hid_keyboard_report_t report = { .modifier = 0, .reserved = 0, .keycode = {0, 0, 0, 0, 0, 0} };
     uint16_t consumer = 0;
 
     for (byte i=0, j=0; i < 6 && j < 6; i++) {
-        if (keyboard.key[i].kchar == KEYPAD_NO_KEY || keyboard.key[i].kchar == HID_KEY_FN)
+        // Don't handle dead keys or Fn
+        if (keyboard.key[i].kchar == KEYPAD_NO_KEY || keyboard.key[i].kchar == HID_KEY_FN ||
+                // Don't handle key releases or IDLE
+                (keyboard.key[i].kstate != PRESSED && keyboard.key[i].kstate != HOLD))
             continue;
 
-        if (keyboard.key[i].kstate == PRESSED || keyboard.key[i].kstate == HOLD) {
-            switch (keyboard.key[i].kchar) {
-                case HID_KEY_CONTROL_LEFT:
-                    modifier |= KEYBOARD_MODIFIER_LEFTCTRL;
-                    break;
-                case HID_KEY_SHIFT_LEFT:
-                    modifier |= KEYBOARD_MODIFIER_LEFTSHIFT;
-                    break;
-                case HID_KEY_ALT_LEFT:
-                    modifier |= KEYBOARD_MODIFIER_LEFTALT;
-                    break;
-                case HID_KEY_GUI_LEFT:
-                    modifier |= KEYBOARD_MODIFIER_LEFTGUI;
-                    break;
-                case HID_KEY_CONTROL_RIGHT:
-                    modifier |= KEYBOARD_MODIFIER_RIGHTCTRL;
-                    break;
-                case HID_KEY_SHIFT_RIGHT:
-                    modifier |= KEYBOARD_MODIFIER_RIGHTSHIFT;
-                    break;
-                case HID_KEY_ALT_RIGHT:
-                    modifier |= KEYBOARD_MODIFIER_RIGHTALT;
-                    break;
-                case HID_KEY_GUI_RIGHT:
-                    modifier |= KEYBOARD_MODIFIER_RIGHTGUI;
-                    break;
-                case HID_KEY_BT_PREVIOUS:
-                    if (connection->prev != NULL)
-                        connection = connection->prev;
-                    else {
-                        while (connection->next != NULL)
-                            connection = connection->next;
-                    }
-
-                    Serial.printf("Prev handle: %d\n", connection->handle);
-                    break;
-                case HID_KEY_BT_NEXT:
-                    if (connection->next != NULL)
-                        connection = connection->next;
-                    else {
-                        while (connection->prev != NULL)
-                            connection = connection->prev;
-                    }
-
-                    Serial.printf("Next handle: %d\n", connection->handle);
-                    break;
-                case HID_KEY_PLAY_PAUSE:
-                    consumer = HID_USAGE_CONSUMER_PLAY_PAUSE;
-                    break;
-                case HID_KEY_STOP:
-                    consumer = HID_USAGE_CONSUMER_STOP;
-                    break;
-                case HID_KEY_SCAN_PREVIOUS:
-                    consumer = HID_USAGE_CONSUMER_SCAN_PREVIOUS;
-                    break;
-                case HID_KEY_SCAN_NEXT:
-                    consumer = HID_USAGE_CONSUMER_SCAN_NEXT;
-                    break;
-                case HID_KEY_VOLUME_DECREMENT:
-                    consumer = HID_USAGE_CONSUMER_VOLUME_DECREMENT;
-                    break;
-                case HID_KEY_VOLUME_INCREMENT:
-                    consumer = HID_USAGE_CONSUMER_VOLUME_INCREMENT;
-                    break;
-                case HID_KEY_MUTE:
-                    consumer = HID_USAGE_CONSUMER_MUTE;
-                    break;
-                case HID_KEY_BRIGHTNESS_DECREMENT:
-                    consumer = HID_USAGE_CONSUMER_BRIGHTNESS_DECREMENT;
-                    break;
-                case HID_KEY_BRIGHTNESS_INCREMENT:
-                    consumer = HID_USAGE_CONSUMER_BRIGHTNESS_INCREMENT;
-                    break;
-                case HID_KEY_DELETE:
-                    // Use delete key for the clearbonds shortcut but report it too
-                    if (clearBonds > 0 && clearBonds < 4)
-                        clearBonds++;
-                default:
-                    report[j] = keyboard.key[i].kchar;
-                    break;
-            }
+        // Button translator
+        switch (keyboard.key[i].kchar) {
+            case HID_KEY_CONTROL_LEFT:
+                report.modifier |= KEYBOARD_MODIFIER_LEFTCTRL;
+                break;
+            case HID_KEY_SHIFT_LEFT:
+                report.modifier |= KEYBOARD_MODIFIER_LEFTSHIFT;
+                break;
+            case HID_KEY_ALT_LEFT:
+                report.modifier |= KEYBOARD_MODIFIER_LEFTALT;
+                break;
+            case HID_KEY_GUI_LEFT:
+                report.modifier |= KEYBOARD_MODIFIER_LEFTGUI;
+                break;
+            case HID_KEY_CONTROL_RIGHT:
+                report.modifier |= KEYBOARD_MODIFIER_RIGHTCTRL;
+                break;
+            case HID_KEY_SHIFT_RIGHT:
+                report.modifier |= KEYBOARD_MODIFIER_RIGHTSHIFT;
+                break;
+            case HID_KEY_ALT_RIGHT:
+                report.modifier |= KEYBOARD_MODIFIER_RIGHTALT;
+                break;
+            case HID_KEY_GUI_RIGHT:
+                report.modifier |= KEYBOARD_MODIFIER_RIGHTGUI;
+                break;
+            case HID_KEY_PLAY_PAUSE:
+                consumer = HID_USAGE_CONSUMER_PLAY_PAUSE;
+                break;
+            case HID_KEY_STOP:
+                consumer = HID_USAGE_CONSUMER_STOP;
+                break;
+            case HID_KEY_SCAN_PREVIOUS:
+                consumer = HID_USAGE_CONSUMER_SCAN_PREVIOUS;
+                break;
+            case HID_KEY_SCAN_NEXT:
+                consumer = HID_USAGE_CONSUMER_SCAN_NEXT;
+                break;
+            case HID_KEY_VOLUME_DECREMENT:
+                consumer = HID_USAGE_CONSUMER_VOLUME_DECREMENT;
+                break;
+            case HID_KEY_VOLUME_INCREMENT:
+                consumer = HID_USAGE_CONSUMER_VOLUME_INCREMENT;
+                break;
+            case HID_KEY_MUTE:
+                consumer = HID_USAGE_CONSUMER_MUTE;
+                break;
+            case HID_KEY_BRIGHTNESS_DECREMENT:
+                consumer = HID_USAGE_CONSUMER_BRIGHTNESS_DECREMENT;
+                break;
+            case HID_KEY_BRIGHTNESS_INCREMENT:
+                consumer = HID_USAGE_CONSUMER_BRIGHTNESS_INCREMENT;
+                break;
+            default:
+                report.keycode[j] = keyboard.key[i].kchar;
+                break;
         }
 
         j++;
-    }
-
-    if (clearBonds >= 4) {
-        // Actually happens when Fn is pressed and Delete is pressed 4 times
-        clearBonds = 0;
-        Bluefruit.clearBonds();
     }
 
     if (consumer > 0) {
@@ -244,7 +250,7 @@ void handleKeys() {
         consumerPressed = false;
     }
 
-    bleHid.keyboardReport(connection->handle, modifier, report);
+    bleHid.keyboardReport(connection->handle, &report);
 }
 
 void handleBtLed(uint16_t _conn_handle, uint8_t led_bitmap) {
@@ -274,12 +280,21 @@ void updateInput(TimerHandle_t _handle) {
     bitSet(insideTimers, TIMER_MAP_INPUT);
     uint32_t startTime = millis();
 
-    keyboard.getKeys();
-    handleKeys();
+    if (keyboard.getKeys())
+        // Run only if state has changed
+        handleKeys();
+
+
+    if (clearBonds >= 4) {
+        // Actually happens when Fn is pressed and Delete is pressed 4 times
+        clearBonds = 0;
+        InternalFS.format();
+        Bluefruit.clearBonds();
+    }
 
     uint32_t deltaTime = millis() - startTime;
-    if (deltaTime > 0)
-        Serial.printf(" Total Time: %d\n", deltaTime);
+    if (deltaTime > 0) Serial.printf("Total Time: %d\n", deltaTime);
+
     bitClear(insideTimers, TIMER_MAP_INPUT);
 }
 
@@ -415,7 +430,7 @@ void setup() {
     setupBluetooth();
     setupKeyboard();
 
-    inputTimer.begin(5, updateInput);
+    inputTimer.begin(10, updateInput);
     inputTimer.stop();
     batteryTimer.begin(60000, updateBattery);
     batteryTimer.stop();
