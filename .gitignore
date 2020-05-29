@@ -1,6 +1,6 @@
 .pio
 CMakeListsPrivate.txt
-cmake-build-*/ 
+cmake-build-*/
 # For PCBs designed using KiCad: http://www.kicad-pcb.org/
 # Format documentation: http://kicad-pcb.org/help/file-formats/
 
@@ -83,3 +83,4 @@ dkms.conf
 *_back.svg
 *_front.svg
 .idea
+.vscode

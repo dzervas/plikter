@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <bluefruit.h>
 #include <InternalFileSystem.h>
+#include <KeypadShiftIn.h>
 
 #define DEVICE_NAME "Plikter"
 
@@ -8,8 +9,6 @@
 #define VBAT_MV_PER_LSB (0.73242188F)
 
 // Keyboard options
-#include <KeypadShiftIn.h>
-
 #define HID_KEY_BT_PREVIOUS          HID_KEY_F13
 #define HID_KEY_BT_NEXT              HID_KEY_F14
 #define HID_KEY_FN                   HID_KEY_F15
