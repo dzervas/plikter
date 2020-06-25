@@ -121,14 +121,12 @@ uint16_t conn_pop(uint16_t conn_handle) {
 }
 
 void handleFnMap(KeypadEvent key, KeyState state) {
-    if (state != PRESSED) {
-        if (state == RELEASED && key == HID_KEY_FN) {
-            keyboard.begin(makeKeymap(KBD_MAP));
-            clearBonds = 0;
-        }
-
-        return;
+    if (state == RELEASED && key == HID_KEY_FN) {
+        keyboard.begin(makeKeymap(KBD_MAP));
+        clearBonds = 0;
     }
+
+    if (state != PRESSED) return;
 
     switch (key) {
         case HID_KEY_FN:
@@ -168,7 +166,10 @@ void handleFnMap(KeypadEvent key, KeyState state) {
 }
 
 void handleKeys() {
-    if (connection == NULL) return;
+    if (connection == NULL) {
+        Serial.println("[keys] Abort!");
+        return;
+    }
 
     hid_keyboard_report_t report = { .modifier = 0, .reserved = 0, .keycode = {0, 0, 0, 0, 0, 0} };
     uint16_t consumer = 0;
@@ -249,7 +250,10 @@ void handleKeys() {
         consumerPressed = false;
     }
 
+    uint32_t startTime = millis();
     bleHid.keyboardReport(connection->handle, &report);
+    uint32_t deltaTime = millis() - startTime;
+    if (deltaTime > 0) Serial.printf("Time to send: %d ", deltaTime);
 }
 
 void handleBtLed(uint16_t _conn_handle, uint8_t led_bitmap) {
@@ -275,10 +279,14 @@ uint8_t mvToPer(float mvolts) {
 }
 
 void updateInput(TimerHandle_t _handle) {
-    if (bitRead(insideTimers, TIMER_MAP_INPUT)) return;
+    if (bitRead(insideTimers, TIMER_MAP_INPUT)) {
+        Serial.println("[input] Abort!");
+        // return;
+    }
     bitSet(insideTimers, TIMER_MAP_INPUT);
     uint32_t startTime = millis();
 
+    // Serial.println("Running");
     if (keyboard.getKeys())
         // Run only if state has changed
         handleKeys();
@@ -312,12 +320,19 @@ void updateBattery(TimerHandle_t _handle) {
 }
 
 void connect_callback(uint16_t conn_handle) {
-    while (insideTimers != 0);
+    while (insideTimers != 0) {
+        Serial.println("[connect] Stuck");
+        delay(1000);
+    }
     bitSet(insideTimers, TIMER_MAP_CONNECT);
 
     conn_push(conn_handle);
 
     if (connection != NULL && connection->prev == NULL && connection->next == NULL) {
+        BLEConnection* conn = Bluefruit.Connection(conn_handle);
+        conn->requestConnectionParameter(6);
+        delay(1000);
+
         Serial.println("Started timers");
         inputTimer.start();
         batteryTimer.start();
@@ -332,7 +347,10 @@ void connect_callback(uint16_t conn_handle) {
 }
 
 void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
-    while (insideTimers != 0);
+    while (insideTimers != 0) {
+        Serial.println("[disconnect] Stuck");
+        delay(1000);
+    }
     bitSet(insideTimers, TIMER_MAP_DISCONNECT);
 
     if ((connection != NULL && connection->prev == NULL && connection->next == NULL) || connection == NULL) {
@@ -352,7 +370,7 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
 
 void setupBluetooth() {
     Bluefruit.begin(2, 0);
-    Bluefruit.setTxPower(-12);
+    Bluefruit.setTxPower(4);
     Bluefruit.setName(DEVICE_NAME);
     Bluefruit.Periph.setConnectCallback(connect_callback);
     Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
@@ -372,7 +390,7 @@ void setupBluetooth() {
     bleHid.begin();
 
     // Set callback for set LED from central
-    bleHid.setKeyboardLedCallback(handleBtLed);
+    // bleHid.setKeyboardLedCallback(handleBtLed);
     bleHid.enableKeyboard(true);
     bleHid.enableMouse(false);
 
@@ -383,7 +401,8 @@ void setupBluetooth() {
      * Note: It is already set by BLEHidAdafruit::begin() to 11.25ms - 15ms
      * min = 9*1.25=11.25 ms, max = 12*1.25= 15 ms
      */
-    Bluefruit.Periph.setConnInterval(9, 12);
+    // Bluefruit.Periph.setConnInterval(9, 12);
+    Bluefruit.Periph.setConnInterval(6, 12);
 
     // Advertising packet
     Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
@@ -429,7 +448,7 @@ void setup() {
     setupBluetooth();
     setupKeyboard();
 
-    inputTimer.begin(10, updateInput);
+    inputTimer.begin(8, updateInput);
     inputTimer.stop();
     batteryTimer.begin(60000, updateBattery);
     batteryTimer.stop();
