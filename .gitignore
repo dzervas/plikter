@@ -84,3 +84,6 @@ dkms.conf
 *_front.svg
 .idea
 .vscode
+/target
+Cargo.lock
+src/platformio/
