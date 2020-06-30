@@ -228,11 +228,11 @@ void handleKeys() {
             case HID_KEY_MUTE:
                 consumer = HID_USAGE_CONSUMER_MUTE;
                 break;
-            case HID_KEY_BRIGHTNESS_DECREMENT:
-                consumer = HID_USAGE_CONSUMER_BRIGHTNESS_DECREMENT;
-                break;
             case HID_KEY_BRIGHTNESS_INCREMENT:
                 consumer = HID_USAGE_CONSUMER_BRIGHTNESS_INCREMENT;
+                break;
+            case HID_KEY_BRIGHTNESS_DECREMENT:
+                consumer = HID_USAGE_CONSUMER_BRIGHTNESS_DECREMENT;
                 break;
             default:
                 report.keycode[j] = keyboard.key[i].kchar;
