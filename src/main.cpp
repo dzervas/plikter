@@ -516,7 +516,7 @@ void setup() {
     setupBluetooth();
     setupKeyboard();
 
-    inputTimer.begin(12, updateInput);
+    inputTimer.begin(20, updateInput);
     inputTimer.stop();
     batteryTimer.begin(60000, updateBattery);
     batteryTimer.stop();
