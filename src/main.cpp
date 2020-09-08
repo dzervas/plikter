@@ -48,6 +48,7 @@ KeypadShiftIn keyboard(KBD_INPUT_ROWS, KBD_ROWS, KBD_COLUMNS, 16, 15, 7);
 
 SoftwareTimer batteryTimer;
 SoftwareTimer inputTimer;
+SoftwareTimer keyboardTimer;
 
 bool consumerPressed = false;
 uint8_t clearBonds = 0;
@@ -60,11 +61,20 @@ typedef struct Conn {
 
 Conn* connection = NULL;
 
-#define TIMER_MAP_CONNECT 2
+#define TIMER_MAP_CONNECT    1
 #define TIMER_MAP_DISCONNECT 2
-#define TIMER_MAP_INPUT 2
-#define TIMER_MAP_BATTERY 3
+#define TIMER_MAP_INPUT      3
+#define TIMER_MAP_BATTERY    4
+#define TIMER_MAP_REPORT     5
+#define TIMER_MAP_CONSUMER   6
 uint8_t insideTimers = 0;
+
+#define REPORT_BUFSIZ 10
+
+hid_keyboard_report_t* report_buffer[REPORT_BUFSIZ];
+int report_index = -1;
+uint16_t consumer_buffer[REPORT_BUFSIZ];
+int consumer_index = -1;
 
 void conn_push(uint16_t conn_handle) {
     Conn* new_conn = (Conn *) malloc(sizeof(Conn));
@@ -171,7 +181,7 @@ void handleKeys() {
         return;
     }
 
-    hid_keyboard_report_t report = { .modifier = 0, .reserved = 0, .keycode = {0, 0, 0, 0, 0, 0} };
+    hid_keyboard_report_t* report = (hid_keyboard_report_t *) calloc(1, sizeof(hid_keyboard_report_t));
     uint16_t consumer = 0;
 
     for (byte i=0, j=0; i < 6 && j < 6; i++) {
@@ -184,28 +194,28 @@ void handleKeys() {
         // Button translator
         switch (keyboard.key[i].kchar) {
             case HID_KEY_CONTROL_LEFT:
-                report.modifier |= KEYBOARD_MODIFIER_LEFTCTRL;
+                report->modifier |= KEYBOARD_MODIFIER_LEFTCTRL;
                 break;
             case HID_KEY_SHIFT_LEFT:
-                report.modifier |= KEYBOARD_MODIFIER_LEFTSHIFT;
+                report->modifier |= KEYBOARD_MODIFIER_LEFTSHIFT;
                 break;
             case HID_KEY_ALT_LEFT:
-                report.modifier |= KEYBOARD_MODIFIER_LEFTALT;
+                report->modifier |= KEYBOARD_MODIFIER_LEFTALT;
                 break;
             case HID_KEY_GUI_LEFT:
-                report.modifier |= KEYBOARD_MODIFIER_LEFTGUI;
+                report->modifier |= KEYBOARD_MODIFIER_LEFTGUI;
                 break;
             case HID_KEY_CONTROL_RIGHT:
-                report.modifier |= KEYBOARD_MODIFIER_RIGHTCTRL;
+                report->modifier |= KEYBOARD_MODIFIER_RIGHTCTRL;
                 break;
             case HID_KEY_SHIFT_RIGHT:
-                report.modifier |= KEYBOARD_MODIFIER_RIGHTSHIFT;
+                report->modifier |= KEYBOARD_MODIFIER_RIGHTSHIFT;
                 break;
             case HID_KEY_ALT_RIGHT:
-                report.modifier |= KEYBOARD_MODIFIER_RIGHTALT;
+                report->modifier |= KEYBOARD_MODIFIER_RIGHTALT;
                 break;
             case HID_KEY_GUI_RIGHT:
-                report.modifier |= KEYBOARD_MODIFIER_RIGHTGUI;
+                report->modifier |= KEYBOARD_MODIFIER_RIGHTGUI;
                 break;
             case HID_KEY_PLAY_PAUSE:
                 consumer = HID_USAGE_CONSUMER_PLAY_PAUSE;
@@ -235,25 +245,81 @@ void handleKeys() {
                 consumer = HID_USAGE_CONSUMER_BRIGHTNESS_DECREMENT;
                 break;
             default:
-                report.keycode[j] = keyboard.key[i].kchar;
+                report->keycode[j] = keyboard.key[i].kchar;
                 break;
         }
 
         j++;
     }
 
-    if (consumer > 0) {
-        bleHid.consumerKeyPress(connection->handle, consumer);
-        consumerPressed = true;
-    } else if (consumerPressed) {
-        bleHid.consumerKeyRelease(connection->handle);
-        consumerPressed = false;
+    // TODO: Implement out of time sending of consumer keys
+    /*
+    while (bitRead(insideTimers, TIMER_MAP_CONSUMER)) {
+        delay(1);
+    }
+    bitSet(insideTimers, TIMER_MAP_CONSUMER);
+    {
+    */
+        if (consumer > 0) {
+            bleHid.consumerKeyPress(connection->handle, consumer);
+            consumerPressed = true;
+        } else if (consumerPressed) {
+            bleHid.consumerKeyRelease(connection->handle);
+            consumerPressed = false;
+        }
+    /*
+    }
+    bitClear(insideTimers, TIMER_MAP_CONSUMER);
+    */
+
+    while (bitRead(insideTimers, TIMER_MAP_REPORT)) {
+        Serial.println("[updateInput] stuck on report");
+        delay(1);
+    }
+    bitSet(insideTimers, TIMER_MAP_REPORT);
+    {
+        if (report_index >= REPORT_BUFSIZ) {
+            Serial.println("[updateInput] Clearing reports");
+            // Throw the oldest event
+            free(report_buffer[0]);
+
+            for (int i = 1; i < report_index; i++) {
+                report_buffer[i-1] = report_buffer[i];
+            }
+
+            // A +1 will happen afterwards
+            report_index = REPORT_BUFSIZ - 2;
+        }
+
+        report_index += 1;
+        if (report_index < 0)
+            report_index = 0;
+
+        report_buffer[report_index] = report;
+        // Serial.printf("[updateKeyboard] Added report %d", report_index);
+    }
+    bitClear(insideTimers, TIMER_MAP_REPORT);
+}
+
+void updateKeyboard(TimerHandle_t _handle) {
+    while (bitRead(insideTimers, TIMER_MAP_REPORT)) {
+        Serial.println("[updateKeyboard] stuck on report");
+        delay(1);
+    }
+    bitSet(insideTimers, TIMER_MAP_REPORT);
+
+    for (int i = 0; i <= report_index; i++) {
+        hid_keyboard_report_t *report = report_buffer[i];
+        uint32_t startTime = millis();
+        bleHid.keyboardReport(connection->handle, report);
+        uint32_t deltaTime = millis() - startTime;
+        if (deltaTime > 0) Serial.printf("Time to send: %d ", deltaTime);
+
+        free(report);
     }
 
-    uint32_t startTime = millis();
-    bleHid.keyboardReport(connection->handle, &report);
-    uint32_t deltaTime = millis() - startTime;
-    if (deltaTime > 0) Serial.printf("Time to send: %d ", deltaTime);
+    report_index = -1;
+    bitClear(insideTimers, TIMER_MAP_REPORT);
 }
 
 void handleBtLed(uint16_t _conn_handle, uint8_t led_bitmap) {
@@ -336,6 +402,7 @@ void connect_callback(uint16_t conn_handle) {
         Serial.println("Started timers");
         inputTimer.start();
         batteryTimer.start();
+        keyboardTimer.start();
         updateBattery(NULL);
     }
 
@@ -357,6 +424,7 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
         Serial.println("Stopped timers");
         inputTimer.stop();
         batteryTimer.stop();
+        keyboardTimer.stop();
     }
 
     conn_pop(conn_handle);
@@ -448,10 +516,12 @@ void setup() {
     setupBluetooth();
     setupKeyboard();
 
-    inputTimer.begin(20, updateInput);
+    inputTimer.begin(12, updateInput);
     inputTimer.stop();
     batteryTimer.begin(60000, updateBattery);
     batteryTimer.stop();
+    keyboardTimer.begin(40, updateKeyboard);
+    keyboardTimer.stop();
 
     suspendLoop();
 }
