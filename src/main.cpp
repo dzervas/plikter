@@ -153,7 +153,9 @@ void handleFnMap(KeypadEvent key, KeyState state) {
                     connection = connection->next;
             }
 
+#ifdef CFG_DEBUG
             Serial.printf("Prev handle: %d\n", connection->handle);
+#endif
             break;
         case HID_KEY_BT_NEXT:
             if (connection == NULL) break;
@@ -165,7 +167,9 @@ void handleFnMap(KeypadEvent key, KeyState state) {
                     connection = connection->prev;
             }
 
+#ifdef CFG_DEBUG
             Serial.printf("Next handle: %d\n", connection->handle);
+#endif
             break;
         case HID_KEY_DELETE:
             // Use delete key for the clearbonds shortcut but report it too
@@ -177,7 +181,9 @@ void handleFnMap(KeypadEvent key, KeyState state) {
 
 void handleKeys() {
     if (connection == NULL) {
+#ifdef CFG_DEBUG
         Serial.println("[keys] Abort!");
+#endif
         return;
     }
 
@@ -273,13 +279,17 @@ void handleKeys() {
     */
 
     while (bitRead(insideTimers, TIMER_MAP_REPORT)) {
+#ifdef CFG_DEBUG
         Serial.println("[updateInput] stuck on report");
+#endif
         delay(1);
     }
     bitSet(insideTimers, TIMER_MAP_REPORT);
     {
         if (report_index >= REPORT_BUFSIZ) {
+#ifdef CFG_DEBUG
             Serial.println("[updateInput] Clearing reports");
+#endif
             // Throw the oldest event
             free(report_buffer[0]);
 
@@ -303,7 +313,9 @@ void handleKeys() {
 
 void updateKeyboard(TimerHandle_t _handle) {
     while (bitRead(insideTimers, TIMER_MAP_REPORT)) {
+#ifdef CFG_DEBUG
         Serial.println("[updateKeyboard] stuck on report");
+#endif
         delay(1);
     }
     bitSet(insideTimers, TIMER_MAP_REPORT);
@@ -312,8 +324,10 @@ void updateKeyboard(TimerHandle_t _handle) {
         hid_keyboard_report_t *report = report_buffer[i];
         uint32_t startTime = millis();
         bleHid.keyboardReport(connection->handle, report);
+#ifdef CFG_DEBUG
         uint32_t deltaTime = millis() - startTime;
         if (deltaTime > 0) Serial.printf("Time to send: %d ", deltaTime);
+#endif
 
         free(report);
     }
@@ -346,7 +360,9 @@ uint8_t mvToPer(float mvolts) {
 
 void updateInput(TimerHandle_t _handle) {
     if (bitRead(insideTimers, TIMER_MAP_INPUT)) {
+#ifdef CFG_DEBUG
         Serial.println("[input] Abort!");
+#endif
         // return;
     }
     bitSet(insideTimers, TIMER_MAP_INPUT);
@@ -365,8 +381,10 @@ void updateInput(TimerHandle_t _handle) {
         Bluefruit.clearBonds();
     }
 
+#ifdef CFG_DEBUG
     uint32_t deltaTime = millis() - startTime;
     if (deltaTime > 0) Serial.printf("Total Time: %d\n", deltaTime);
+#endif
 
     bitClear(insideTimers, TIMER_MAP_INPUT);
 }
@@ -387,7 +405,9 @@ void updateBattery(TimerHandle_t _handle) {
 
 void connect_callback(uint16_t conn_handle) {
     while (insideTimers != 0) {
+#ifdef CFG_DEBUG
         Serial.println("[connect] Stuck");
+#endif
         delay(1000);
     }
     bitSet(insideTimers, TIMER_MAP_CONNECT);
@@ -399,7 +419,9 @@ void connect_callback(uint16_t conn_handle) {
         conn->requestConnectionParameter(6);
         delay(1000);
 
+#ifdef CFG_DEBUG
         Serial.println("Started timers");
+#endif
         inputTimer.start();
         batteryTimer.start();
         keyboardTimer.start();
@@ -415,13 +437,17 @@ void connect_callback(uint16_t conn_handle) {
 
 void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
     while (insideTimers != 0) {
+#ifdef CFG_DEBUG
         Serial.println("[disconnect] Stuck");
+#endif
         delay(1000);
     }
     bitSet(insideTimers, TIMER_MAP_DISCONNECT);
 
     if ((connection != NULL && connection->prev == NULL && connection->next == NULL) || connection == NULL) {
+#ifdef CFG_DEBUG
         Serial.println("Stopped timers");
+#endif
         inputTimer.stop();
         batteryTimer.stop();
         keyboardTimer.stop();
@@ -511,7 +537,9 @@ void setup() {
     analogReference(AR_INTERNAL_3_0);
     analogReadResolution(12);
 
+#ifdef CFG_DEBUG
     Serial.begin(115200);
+#endif
 
     setupBluetooth();
     setupKeyboard();
