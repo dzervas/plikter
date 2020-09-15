@@ -61,14 +61,6 @@ typedef struct Conn {
 
 Conn* connection = NULL;
 
-#define TIMER_MAP_CONNECT    1
-#define TIMER_MAP_DISCONNECT 2
-#define TIMER_MAP_INPUT      3
-#define TIMER_MAP_BATTERY    4
-#define TIMER_MAP_REPORT     5
-#define TIMER_MAP_CONSUMER   6
-uint8_t insideTimers = 0;
-
 #define REPORT_BUFSIZ 10
 
 hid_keyboard_report_t* report_buffer[REPORT_BUFSIZ];
@@ -259,70 +251,43 @@ void handleKeys() {
     }
 
     // TODO: Implement out of time sending of consumer keys
-    /*
-    while (bitRead(insideTimers, TIMER_MAP_CONSUMER)) {
-        delay(1);
+    if (consumer > 0) {
+        bleHid.consumerKeyPress(connection->handle, consumer);
+        consumerPressed = true;
+    } else if (consumerPressed) {
+        bleHid.consumerKeyRelease(connection->handle);
+        consumerPressed = false;
     }
-    bitSet(insideTimers, TIMER_MAP_CONSUMER);
-    {
-    */
-        if (consumer > 0) {
-            bleHid.consumerKeyPress(connection->handle, consumer);
-            consumerPressed = true;
-        } else if (consumerPressed) {
-            bleHid.consumerKeyRelease(connection->handle);
-            consumerPressed = false;
-        }
-    /*
-    }
-    bitClear(insideTimers, TIMER_MAP_CONSUMER);
-    */
 
-    while (bitRead(insideTimers, TIMER_MAP_REPORT)) {
+    if (report_index >= REPORT_BUFSIZ) {
 #ifdef CFG_DEBUG
-        Serial.println("[updateInput] stuck on report");
+        Serial.println("[updateInput] Clearing reports");
 #endif
-        delay(1);
-    }
-    bitSet(insideTimers, TIMER_MAP_REPORT);
-    {
-        if (report_index >= REPORT_BUFSIZ) {
-#ifdef CFG_DEBUG
-            Serial.println("[updateInput] Clearing reports");
-#endif
-            // Throw the oldest event
-            free(report_buffer[0]);
+        // Throw the oldest event
+        free(report_buffer[0]);
 
-            for (int i = 1; i < report_index; i++) {
-                report_buffer[i-1] = report_buffer[i];
-            }
-
-            // A +1 will happen afterwards
-            report_index = REPORT_BUFSIZ - 2;
+        for (int i = 1; i < report_index; i++) {
+            report_buffer[i-1] = report_buffer[i];
         }
 
-        report_index += 1;
-        if (report_index < 0)
-            report_index = 0;
-
-        report_buffer[report_index] = report;
-        // Serial.printf("[updateKeyboard] Added report %d", report_index);
+        // A +1 will happen afterwards
+        report_index = REPORT_BUFSIZ - 2;
     }
-    bitClear(insideTimers, TIMER_MAP_REPORT);
+
+    report_index += 1;
+    if (report_index < 0)
+        report_index = 0;
+
+    report_buffer[report_index] = report;
+    // Serial.printf("[updateKeyboard] Added report %d", report_index);
 }
 
 void updateKeyboard(TimerHandle_t _handle) {
-    while (bitRead(insideTimers, TIMER_MAP_REPORT)) {
-#ifdef CFG_DEBUG
-        Serial.println("[updateKeyboard] stuck on report");
-#endif
-        delay(1);
-    }
-    bitSet(insideTimers, TIMER_MAP_REPORT);
-
     for (int i = 0; i <= report_index; i++) {
         hid_keyboard_report_t *report = report_buffer[i];
+#ifdef CFG_DEBUG
         uint32_t startTime = millis();
+#endif
         bleHid.keyboardReport(connection->handle, report);
 #ifdef CFG_DEBUG
         uint32_t deltaTime = millis() - startTime;
@@ -333,7 +298,6 @@ void updateKeyboard(TimerHandle_t _handle) {
     }
 
     report_index = -1;
-    bitClear(insideTimers, TIMER_MAP_REPORT);
 }
 
 void handleBtLed(uint16_t _conn_handle, uint8_t led_bitmap) {
@@ -359,14 +323,9 @@ uint8_t mvToPer(float mvolts) {
 }
 
 void updateInput(TimerHandle_t _handle) {
-    if (bitRead(insideTimers, TIMER_MAP_INPUT)) {
 #ifdef CFG_DEBUG
-        Serial.println("[input] Abort!");
-#endif
-        // return;
-    }
-    bitSet(insideTimers, TIMER_MAP_INPUT);
     uint32_t startTime = millis();
+#endif
 
     // Serial.println("Running");
     if (keyboard.getKeys())
@@ -385,33 +344,19 @@ void updateInput(TimerHandle_t _handle) {
     uint32_t deltaTime = millis() - startTime;
     if (deltaTime > 0) Serial.printf("Total Time: %d\n", deltaTime);
 #endif
-
-    bitClear(insideTimers, TIMER_MAP_INPUT);
 }
 
 void updateBattery(TimerHandle_t _handle) {
     if (connection == NULL) return;
-
-    bitSet(insideTimers, TIMER_MAP_BATTERY);
 
     uint32_t vbat = analogRead(PIN_VBAT);
     float mvolts = vbat * VBAT_MV_PER_LSB;
     uint8_t batp = mvToPer(mvolts);
 
     bleBas.notify(connection->handle, batp);
-
-    bitClear(insideTimers, TIMER_MAP_BATTERY);
 }
 
 void connect_callback(uint16_t conn_handle) {
-    while (insideTimers != 0) {
-#ifdef CFG_DEBUG
-        Serial.println("[connect] Stuck");
-#endif
-        delay(1000);
-    }
-    bitSet(insideTimers, TIMER_MAP_CONNECT);
-
     conn_push(conn_handle);
 
     if (connection != NULL && connection->prev == NULL && connection->next == NULL) {
@@ -431,19 +376,9 @@ void connect_callback(uint16_t conn_handle) {
     // Keep advertising
     if (!Bluefruit.Advertising.isRunning())
         Bluefruit.Advertising.start(0);
-
-    bitClear(insideTimers, TIMER_MAP_CONNECT);
 }
 
 void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
-    while (insideTimers != 0) {
-#ifdef CFG_DEBUG
-        Serial.println("[disconnect] Stuck");
-#endif
-        delay(1000);
-    }
-    bitSet(insideTimers, TIMER_MAP_DISCONNECT);
-
     if ((connection != NULL && connection->prev == NULL && connection->next == NULL) || connection == NULL) {
 #ifdef CFG_DEBUG
         Serial.println("Stopped timers");
@@ -458,8 +393,6 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
     // Keep advertising
     if (!Bluefruit.Advertising.isRunning())
         Bluefruit.Advertising.start(0);
-
-    bitClear(insideTimers, TIMER_MAP_DISCONNECT);
 }
 
 void setupBluetooth() {
